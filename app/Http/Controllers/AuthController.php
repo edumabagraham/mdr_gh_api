@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -25,6 +26,13 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
         ]);
 
+        // Mails the six-digit verification code: the framework's Registered
+        // listener calls User::sendEmailVerificationNotification(), which this
+        // application overrides to send a code instead of a signed link.
+        event(new Registered($user));
+
+        // The account is usable but unverified. The SPA reads the null
+        // email_verified_at off this response and routes to /verify-email.
         Auth::login($user);
         $request->session()->regenerate();
 
