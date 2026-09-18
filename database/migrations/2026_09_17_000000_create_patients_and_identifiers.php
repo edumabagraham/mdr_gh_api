@@ -64,7 +64,7 @@ return new class extends Migration
             $table->timestampTz('merged_at')->nullable();
 
             $table->timestampTz('enrolled_at');
-            $table->foreignId('enrolled_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('enrolled_by')->nullable()->constrained('users')->restrictOnDelete();
 
             // Client-generated UUID, supplied when a registration is created offline.
             // Makes POST /api/patients idempotent: a retry after a dropped connection

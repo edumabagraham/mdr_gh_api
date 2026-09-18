@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\EmailVerificationCode;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
@@ -22,11 +23,31 @@ use Symfony\Component\Mime\Email;
  * The rest of deliverability is DNS, not code: see the MAIL_* block in
  * .env.example for the SPF/DKIM/DMARC records the sending domain needs.
  */
-class VerifyEmailWithCode extends Notification
+class VerifyEmailWithCode extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public string $code) {}
+    /**
+     * Mail is sent by a worker, not during the request. Registration should not
+     * wait on an SMTP handshake, and a provider having a bad minute should not
+     * turn into a failed registration.
+     *
+     * The consequence to know about: nothing is delivered unless a worker is
+     * running (`php artisan queue:work`).
+     */
+    public $tries = 3;
+
+    /** Seconds between attempts: a provider blip is usually over within a minute. */
+    public $backoff = [10, 60];
+
+    public function __construct(public string $code)
+    {
+        // The code row is written in the same request that sends this. Waiting
+        // for the commit stops a worker reading a user or a code that is not
+        // there yet. (Queueable already declares $afterCommit; setting it
+        // through the trait's own method is the only way that composes.)
+        $this->afterCommit();
+    }
 
     /**
      * Get the notification's delivery channels.

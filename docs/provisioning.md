@@ -8,19 +8,26 @@ Run as a Postgres superuser, once per environment.
 
 ## 1. Role and databases
 
-```sql
-CREATE ROLE mdr_app LOGIN PASSWORD '...';         -- the application role
-CREATE DATABASE mdr_gh OWNER mdr_app;
-CREATE DATABASE mdr_gh_testing OWNER mdr_app;     -- the test suite truncates this
-```
-
-On a local machine where the role already exists and the databases belong to
-`postgres`, the equivalent is:
+The application connects as the role in `DB_USERNAME`. On the current
+development machine that role is **`edumaba`**; on a server it should be a
+dedicated role that owns nothing else.
 
 ```sql
-ALTER ROLE <role> CREATEDB;
-ALTER DATABASE mdr_gh OWNER TO <role>;
+CREATE ROLE <db_username> LOGIN PASSWORD '...';
+CREATE DATABASE mdr_gh OWNER <db_username>;
+CREATE DATABASE mdr_gh_testing OWNER <db_username>;   -- the test suite wipes this
 ```
+
+Where the role already exists and the databases belong to `postgres`, as on the
+development machine, the equivalent is:
+
+```sql
+ALTER ROLE edumaba CREATEDB;
+ALTER DATABASE mdr_gh OWNER TO edumaba;
+```
+
+`CREATEDB` is only needed to create the test database; the application itself
+never creates one.
 
 ## 2. Extensions
 
@@ -33,6 +40,14 @@ CREATE EXTENSION pg_trgm;
 
 \c mdr_gh_testing
 CREATE EXTENSION pg_trgm;
+```
+
+`CREATE EXTENSION` needs superuser unless the role owns the database, so this
+is usually a `sudo -u postgres psql` away:
+
+```sh
+sudo -u postgres psql -d mdr_gh -c "CREATE EXTENSION pg_trgm;"
+sudo -u postgres psql -d mdr_gh_testing -c "CREATE EXTENSION pg_trgm;"
 ```
 
 The test database needs it too: duplicate detection is the core safety feature

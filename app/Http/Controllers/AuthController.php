@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
@@ -12,6 +13,14 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    /**
+     * Create an account.
+     *
+     * No longer routed: anyone with an email address could otherwise create an
+     * account on a system that holds patient records. It is kept because
+     * invitation acceptance performs exactly these steps once it has checked
+     * the token.
+     */
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -54,7 +63,7 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return response()->json(Auth::user());
+        return response()->json(UserResource::make(Auth::user())->resolve());
     }
 
     public function logout(Request $request)

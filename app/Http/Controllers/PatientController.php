@@ -42,7 +42,7 @@ class PatientController extends Controller
 
         [$matchedBy, $results] = $this->runSearchTiers($query, $limit);
 
-        AuditEntry::record($request, 'patient.search', 'patient', null, [
+        AuditEntry::record($request, 'patient.searched', 'patient', null, [
             'query' => $query,
             'matched_by' => $matchedBy,
             'results' => $results->count(),
@@ -110,7 +110,7 @@ class PatientController extends Controller
     {
         $patient->load(['identifiers', 'mergedInto']);
 
-        AuditEntry::record($request, 'patient.view', 'patient', $patient->id);
+        AuditEntry::record($request, 'patient.viewed', 'patient', $patient->id);
 
         return response()->json(PatientSummaryResource::make($patient)->resolve());
     }
@@ -159,7 +159,7 @@ class PatientController extends Controller
             'checked_at' => now()->toIso8601String(),
         ]);
 
-        AuditEntry::record($request, 'patient.create', 'patient', $patient->id, [
+        AuditEntry::record($request, 'patient.created', 'patient', $patient->id, [
             'verdict' => $verdict,
             'decision' => $data['duplicate_decision'],
         ]);

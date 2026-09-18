@@ -3,27 +3,31 @@
 use App\Models\EmailVerificationCode;
 use App\Models\User;
 use App\Notifications\VerifyEmailWithCode;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
 
 /**
- * Register a user through the API and return the code that was mailed.
+ * Create an unverified account and return the code that was mailed to it.
+ *
+ * Fires Registered rather than posting to a route: self-registration is gone,
+ * and this is the path invitation acceptance takes once it has checked a token.
  */
 function registerAndCaptureCode(): string
 {
     $code = null;
 
-    test()->postJson('/api/register', [
+    $user = User::factory()->unverified()->create([
         'name' => 'Ama Mensah',
         'email' => 'ama@example.com',
-        'password' => 'correct-horse-battery',
-        'password_confirmation' => 'correct-horse-battery',
-    ])->assertCreated();
+    ]);
+
+    event(new Registered($user));
 
     Notification::assertSentTo(
-        User::where('email', 'ama@example.com')->sole(),
+        $user,
         VerifyEmailWithCode::class,
         function (VerifyEmailWithCode $notification) use (&$code) {
             $code = $notification->code;
@@ -137,4 +141,17 @@ it('replaces the outstanding code when a new one is requested', function () {
 it('refuses the verification endpoints to guests', function () {
     $this->postJson('/api/email/verify', ['code' => '123456'])->assertUnauthorized();
     $this->postJson('/api/email/resend')->assertUnauthorized();
+});
+
+it('no longer offers a public registration route', function () {
+    // Criterion 1: an account on a system holding patient records is created
+    // by invitation, never by whoever finds the URL.
+    $this->postJson('/api/register', [
+        'name' => 'Uninvited Person',
+        'email' => 'uninvited@example.com',
+        'password' => 'correct-horse-battery',
+        'password_confirmation' => 'correct-horse-battery',
+    ])->assertNotFound();
+
+    expect(User::where('email', 'uninvited@example.com')->exists())->toBeFalse();
 });

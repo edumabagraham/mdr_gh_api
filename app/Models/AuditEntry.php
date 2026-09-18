@@ -6,18 +6,23 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Http\Request;
+use RuntimeException;
 
 /**
- * Append-only record of who touched which patient.
+ * Append-only record of who did what.
  *
  * Every clinician can read every patient, by design — restricting visibility
  * is what causes the duplicate registrations this registry is built to avoid.
- * This table is how that openness stays accountable.
+ * This table is how that openness stays accountable, so it accepts inserts and
+ * nothing else: the model refuses updates and deletes outright, rather than
+ * relying on nobody ever writing the code.
  */
-#[Fillable(['user_id', 'action', 'subject_type', 'subject_id', 'context', 'ip_address', 'created_at'])]
+#[Fillable([
+    'actor_id', 'action', 'subject_type', 'subject_id', 'context', 'ip_address', 'user_agent', 'created_at',
+])]
 class AuditEntry extends Model
 {
-    protected $table = 'audit_log';
+    protected $table = 'audit_events';
 
     public $timestamps = false;
 
@@ -34,9 +39,20 @@ class AuditEntry extends Model
         ];
     }
 
-    public function user(): BelongsTo
+    protected static function booted(): void
     {
-        return $this->belongsTo(User::class);
+        static::updating(function (): never {
+            throw new RuntimeException('audit_events is append-only: entries cannot be updated.');
+        });
+
+        static::deleting(function (): never {
+            throw new RuntimeException('audit_events is append-only: entries cannot be deleted.');
+        });
+    }
+
+    public function actor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'actor_id');
     }
 
     /**
@@ -45,17 +61,18 @@ class AuditEntry extends Model
     public static function record(
         Request $request,
         string $action,
-        string $subjectType,
+        ?string $subjectType = null,
         ?int $subjectId = null,
         array $context = [],
     ): void {
         static::create([
-            'user_id' => $request->user()?->getKey(),
+            'actor_id' => $request->user()?->getKey(),
             'action' => $action,
             'subject_type' => $subjectType,
             'subject_id' => $subjectId,
             'context' => $context ?: null,
             'ip_address' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 255) ?: null,
             'created_at' => now(),
         ]);
     }

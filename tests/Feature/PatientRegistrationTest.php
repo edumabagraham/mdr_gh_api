@@ -205,10 +205,10 @@ it('writes an audit entry when a patient record is read', function () {
 
     $this->getJson("/api/patients/{$patient->registry_no}")->assertOk();
 
-    $entry = AuditEntry::where('action', 'patient.view')->sole();
+    $entry = AuditEntry::where('action', 'patient.viewed')->sole();
 
     expect($entry->subject_id)->toBe($patient->id)
-        ->and($entry->user_id)->toBe($this->clinician->id);
+        ->and($entry->actor_id)->toBe($this->clinician->id);
 });
 
 it('keeps patient endpoints closed to guests and unverified accounts', function () {

@@ -6,10 +6,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Three things slice 1 requires that the patients migration does not create.
+ * Two things the patients migration does not create.
  *
  * Kept separate from 2026_09_17_000000_create_patients_and_identifiers so that
  * migration stays the reference artifact it was handed over as.
+ *
+ * The audit table this originally created has been dropped in favour of
+ * audit_events, which slice 0 owns and every later slice writes to.
  */
 return new class extends Migration
 {
@@ -40,28 +43,10 @@ return new class extends Migration
             $table->unsignedSmallInteger('contact_attempts')->default(0)->after('status');
         });
 
-        // Append-only. Access to patient records is not restricted by who
-        // enrolled them, so this log is how the governance concern is met —
-        // every read is attributable after the fact.
-        Schema::create('audit_log', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('action', 40);         // patient.view | patient.create | patient.search
-            $table->string('subject_type', 40);   // patient | visit
-            $table->unsignedBigInteger('subject_id')->nullable();
-            $table->jsonb('context')->nullable();
-            $table->string('ip_address', 45)->nullable();
-            $table->timestampTz('created_at');
-
-            $table->index(['subject_type', 'subject_id', 'created_at']);
-            $table->index(['user_id', 'created_at']);
-        });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('audit_log');
-
         Schema::table('visits', function (Blueprint $table) {
             $table->dropColumn('contact_attempts');
         });
