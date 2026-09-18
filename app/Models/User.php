@@ -20,6 +20,20 @@ class User extends Authenticatable implements MustVerifyEmail
     use HasFactory, Notifiable;
 
     /**
+     * The column has the same default, but a freshly created model would
+     * otherwise report a null role until it was read back from the database —
+     * including in the JSON that registration returns.
+     *
+     * `role` is deliberately absent from #[Fillable]: it must never be
+     * settable from a registration payload.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'role' => 'clinician',
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

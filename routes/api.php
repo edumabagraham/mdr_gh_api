@@ -19,8 +19,13 @@
 */
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailVerificationController;
+use App\Http\Controllers\MeController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\PatientController;
+use App\Http\Controllers\SyncController;
+use App\Http\Controllers\VisitController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -38,6 +43,30 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:codes');
     Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:codes');
 
-    // Routes that should be closed to unverified users belong in a
-    // ->middleware('verified') group, which answers them with a 409.
+    /*
+     * Everything below touches patient data, so it is closed to accounts that
+     * have not confirmed their email address. Laravel answers an unverified
+     * user with a 403 on a JSON request.
+     *
+     * Access is deliberately not scoped by who enrolled a patient: people here
+     * are seen by whoever is in clinic that day, and hiding records from
+     * colleagues is what produces duplicate registrations. Every read is
+     * written to the audit log instead.
+     */
+    Route::middleware('verified')->group(function () {
+        Route::get('/me', [MeController::class, 'show']);
+        Route::get('/dashboard', [DashboardController::class, 'index']);
+
+        Route::get('/patients/search', [PatientController::class, 'search']);
+        Route::post('/patients/duplicate-check', [PatientController::class, 'duplicateCheck']);
+        Route::post('/patients', [PatientController::class, 'store']);
+
+        // Bound by registry number: that is what appears in a URL, on a consent
+        // form and in a referral letter. patients.id stays internal.
+        Route::get('/patients/{patient:registry_no}', [PatientController::class, 'show']);
+
+        Route::patch('/visits/{visit}', [VisitController::class, 'update']);
+
+        Route::get('/sync/patients', [SyncController::class, 'patients']);
+    });
 });
