@@ -25,6 +25,15 @@ class User extends Authenticatable implements MustVerifyEmail
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
+     * Titles offered at account setup. Kept short and deliberately incomplete:
+     * the list covers who actually works in this service, and anyone it does
+     * not fit can leave it blank rather than be mislabelled.
+     *
+     * @var list<string>
+     */
+    public const TITLES = ['Dr', 'Prof', 'Mr', 'Mrs', 'Ms', 'Miss', 'Mx'];
+
+    /**
      * The columns carry the same defaults, but a freshly created model would
      * otherwise report null for both until it was read back from the database —
      * and a null status reads as "not active", which locks the user out of the
@@ -57,6 +66,12 @@ class User extends Authenticatable implements MustVerifyEmail
             'invited_at' => 'datetime',
             'deactivated_at' => 'datetime',
         ];
+    }
+
+    /** Name with the title in front of it, where there is one. */
+    public function displayName(): string
+    {
+        return trim(($this->title ? $this->title.' ' : '').$this->name);
     }
 
     public function isActive(): bool

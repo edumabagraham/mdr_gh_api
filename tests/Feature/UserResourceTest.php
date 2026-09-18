@@ -5,7 +5,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-$expected = ['id', 'name', 'email', 'role', 'status', 'specialty', 'email_verified_at'];
+$expected = ['id', 'title', 'name', 'display_name', 'email', 'role', 'status', 'specialty', 'email_verified_at'];
 
 it('returns only the account fields the client needs, on login', function () use ($expected) {
     $user = User::factory()->create([

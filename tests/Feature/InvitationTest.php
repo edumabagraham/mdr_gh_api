@@ -62,18 +62,22 @@ it('carries an account from invitation through to a verified login', function ()
 
     $this->postJson('/api/invitations/accept', [
         'token' => $token,
-        'name' => 'Dr A. Owusu',
+        'title' => 'Dr',
+        'name' => 'A. Owusu',
         'password' => 'correct-horse-battery',
         'password_confirmation' => 'correct-horse-battery',
         'specialty' => 'Neurology',
         'mdc_number' => 'MDC/RN/12345',
-    ])->assertCreated()->assertJsonPath('role', Role::RESEARCH_ASSISTANT);
+    ])->assertCreated()
+        ->assertJsonPath('role', Role::RESEARCH_ASSISTANT)
+        ->assertJsonPath('display_name', 'Dr A. Owusu');
 
     $user = User::where('email', 'a.owusu@mdr.kath.org')->sole();
 
     // Criterion 4: active, but no patient data until the code is entered.
     expect($user->status)->toBe(AccountStatus::ACTIVE)
         ->and($user->hasVerifiedEmail())->toBeFalse()
+        ->and($user->title)->toBe('Dr')
         ->and($user->specialty)->toBe('Neurology')
         ->and($user->invited_by)->toBe($this->admin->id)
         ->and(Invitation::sole()->accepted_at)->not->toBeNull();
@@ -262,4 +266,26 @@ it('will not remind someone who has already accepted', function () {
     $this->actingAs($this->admin)
         ->postJson('/api/admin/invitations/'.Invitation::sole()->id.'/resend')
         ->assertStatus(422);
+});
+
+it('accepts an invitation without a title', function () {
+    $token = inviteAndCaptureToken();
+
+    $this->postJson('/api/invitations/accept', acceptancePayload($token))->assertCreated();
+
+    $user = User::where('email', 'a.owusu@mdr.kath.org')->sole();
+
+    expect($user->title)->toBeNull()
+        ->and($user->displayName())->toBe('Dr A. Owusu');
+});
+
+it('refuses a title that is not on the list', function () {
+    $token = inviteAndCaptureToken();
+
+    $this->postJson('/api/invitations/accept', [
+        ...acceptancePayload($token),
+        'title' => 'Chief Consultant Supreme',
+    ])->assertStatus(422)->assertJsonValidationErrorFor('title');
+
+    expect(User::where('email', 'a.owusu@mdr.kath.org')->exists())->toBeFalse();
 });

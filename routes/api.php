@@ -28,6 +28,7 @@ use App\Access\Permission;
 use App\Access\Role;
 use App\Http\Controllers\AcceptInvitationController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\InvitationController;
@@ -56,6 +57,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     // Reachable while unverified — this is how a user becomes verified.
+    // Outside the verified group on purpose: someone who has not yet entered
+    // their code may still need to change a password they mistyped at setup.
+    Route::post('/password', ChangePasswordController::class)->middleware('throttle:codes');
+
     Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:codes');
     Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:codes');
 

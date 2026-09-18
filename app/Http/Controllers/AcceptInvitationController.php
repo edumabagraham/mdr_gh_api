@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -27,6 +28,7 @@ class AcceptInvitationController extends Controller
     {
         $data = $request->validate([
             'token' => ['required', 'string'],
+            'title' => ['nullable', Rule::in(User::TITLES)],
             'name' => ['required', 'string', 'max:255'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'specialty' => ['nullable', 'string', 'max:80'],
@@ -55,6 +57,7 @@ class AcceptInvitationController extends Controller
             // Role comes from the invitation, never from the payload: the
             // person accepting does not get to choose what they are.
             $user->forceFill([
+                'title' => $data['title'] ?? null,
                 'role' => $invitation->role,
                 'status' => AccountStatus::ACTIVE,
                 'specialty' => $data['specialty'] ?? null,
