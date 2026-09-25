@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Resources\UserResource;
+use App\Models\AuditEntry;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
@@ -56,12 +57,23 @@ class AuthController extends Controller
         ]);
 
         if (! Auth::attempt($data, $request->boolean('remember'))) {
+            // The address attempted and the address only: never the password,
+            // not even a fragment of it.
+            AuditEntry::record($request, 'auth.login_failed', 'user', null, [
+                'email' => $data['email'],
+            ]);
+
             throw ValidationException::withMessages([
                 'email' => 'These credentials do not match our records.',
             ]);
         }
 
         $request->session()->regenerate();
+
+        // What the access review is conducted against.
+        Auth::user()->forceFill(['last_login_at' => now()])->saveQuietly();
+
+        AuditEntry::record($request, 'auth.login_succeeded', 'user', Auth::id());
 
         return response()->json(UserResource::make(Auth::user())->resolve());
     }

@@ -33,6 +33,16 @@ class PatientFactory extends Factory
         ];
     }
 
+    /** A patient who did not know their date of birth and gave an age instead. */
+    public function estimatedAge(int $years): static
+    {
+        return $this->state(fn () => [
+            'date_of_birth' => null,
+            'dob_estimated' => true,
+            'estimated_age' => $years,
+        ]);
+    }
+
     public function named(string $familyName, string $givenName): static
     {
         return $this->state(fn () => ['family_name' => $familyName, 'given_name' => $givenName]);

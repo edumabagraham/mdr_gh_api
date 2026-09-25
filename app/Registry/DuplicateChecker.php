@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Registry;
 
 use App\Models\Patient;
+use Illuminate\Support\Carbon;
 
 /**
  * Decides whether a proposed patient is already in the registry.
@@ -51,9 +52,9 @@ final class DuplicateChecker
 
             if ($match->similarity >= self::NAME_ONLY_THRESHOLD) {
                 $reasons[] = 'name_similarity';
-            } elseif ($this->dateOfBirthIsNear($payload, $match)) {
+            } elseif (($ageReason = $this->birthYearIsNear($payload, $match)) !== null) {
                 $reasons[] = 'name_similarity';
-                $reasons[] = 'dob_within_2_years';
+                $reasons[] = $ageReason;
             }
 
             if ($reasons !== []) {
@@ -162,17 +163,42 @@ final class DuplicateChecker
     }
 
     /**
+     * Whether the two were born within the window, from whichever fact each
+     * side carries.
+     *
+     * Many patients here do not know their date of birth and give an age
+     * instead. Comparing only real dates of birth would drop this signal for
+     * exactly those records — and an approximate year from each side is still
+     * worth comparing, provided the reason returned says which it was, so a
+     * clerk reading the warning knows how much weight it carries.
+     *
      * @param  array<string, mixed>  $payload
+     * @return string|null the reason code, or null when they are not near
      */
-    private function dateOfBirthIsNear(array $payload, Patient $candidate): bool
+    private function birthYearIsNear(array $payload, Patient $candidate): ?string
     {
-        $proposed = $payload['date_of_birth'] ?? null;
+        $proposedDate = $payload['date_of_birth'] ?? null;
+        $proposedAge = $payload['estimated_age'] ?? null;
 
-        if (! $proposed || ! $candidate->date_of_birth) {
-            return false;
+        $proposedYear = match (true) {
+            ! empty($proposedDate) => (int) Carbon::parse($proposedDate)->year,
+            $proposedAge !== null && $proposedAge !== '' => (int) now()->year - (int) $proposedAge,
+            default => null,
+        };
+
+        $candidateYear = $candidate->approximateBirthYear();
+
+        if ($proposedYear === null || $candidateYear === null) {
+            return null;
         }
 
-        return abs($candidate->date_of_birth->diffInYears($proposed)) <= self::DOB_WINDOW_YEARS;
+        if (abs($candidateYear - $proposedYear) > self::DOB_WINDOW_YEARS) {
+            return null;
+        }
+
+        $bothExact = ! empty($proposedDate) && $candidate->date_of_birth !== null;
+
+        return $bothExact ? 'dob_within_2_years' : 'age_within_2_years';
     }
 
     /**
@@ -188,6 +214,8 @@ final class DuplicateChecker
                     'registry_no' => $candidate['patient']->registry_no,
                     'name' => $candidate['patient']->displayName(),
                     'date_of_birth' => $candidate['patient']->date_of_birth?->toDateString(),
+                    'age' => $candidate['patient']->age(),
+                    'age_is_estimated' => $candidate['patient']->ageIsEstimated(),
                 ],
                 'reasons' => array_values(array_unique($candidate['reasons'])),
                 'similarity' => $candidate['similarity'],

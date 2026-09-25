@@ -27,14 +27,18 @@
 use App\Access\Permission;
 use App\Access\Role;
 use App\Http\Controllers\AcceptInvitationController;
+use App\Http\Controllers\AccessReviewController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DiagnosisController;
 use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\MeController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\PatientController;
+use App\Http\Controllers\PatientModuleController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\VisitController;
 use App\Http\Resources\UserResource;
@@ -89,6 +93,12 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
          */
         Route::middleware('can:'.Permission::READ_PATIENTS)->group(function () {
             Route::get('/dashboard', [DashboardController::class, 'index']);
+
+            // Clinical vocabulary comes from config/modules.php so the client
+            // never carries its own copy of it.
+            Route::get('/diagnoses/vocabulary', [DiagnosisController::class, 'vocabulary']);
+            Route::get('/patients/{patient:registry_no}/diagnoses', [DiagnosisController::class, 'index']);
+
             Route::get('/patients/search', [PatientController::class, 'search']);
             Route::get('/patients/{patient:registry_no}', [PatientController::class, 'show']);
             Route::get('/sync/patients', [SyncController::class, 'patients']);
@@ -103,6 +113,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
          * is the whole of what the role can reach.
          */
         Route::middleware('role:'.Role::ADMIN)->prefix('admin')->group(function () {
+            Route::get('/users', [AdminUserController::class, 'index']);
+            Route::patch('/users/{user}', [AdminUserController::class, 'update']);
+            Route::post('/users/{user}/deactivate', [AdminUserController::class, 'deactivate']);
+            Route::post('/users/{user}/reactivate', [AdminUserController::class, 'reactivate']);
+
+            Route::get('/access-review', AccessReviewController::class);
+
             Route::get('/invitations', [InvitationController::class, 'index']);
             Route::post('/invitations', [InvitationController::class, 'store']);
             Route::post('/invitations/{invitation}/resend', [InvitationController::class, 'resend']);
@@ -112,6 +129,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::middleware('can:'.Permission::REGISTER_PATIENTS)->group(function () {
             Route::post('/patients/duplicate-check', [PatientController::class, 'duplicateCheck']);
             Route::post('/patients', [PatientController::class, 'store']);
+            Route::patch('/patients/{patient:registry_no}', [PatientController::class, 'update']);
+        });
+
+        /*
+         * Recording what a patient has, and which modules follow from it.
+         * A research assistant registers patients but does not diagnose them.
+         */
+        Route::middleware('can:'.Permission::RECORD_ASSESSMENTS)->group(function () {
+            Route::post('/patients/{patient:registry_no}/diagnoses', [DiagnosisController::class, 'store']);
+            Route::post('/patients/{patient:registry_no}/modules/{module}/close', [PatientModuleController::class, 'close']);
+            Route::patch('/patients/{patient:registry_no}/modules/{module}/primary', [PatientModuleController::class, 'primary']);
         });
     });
 });

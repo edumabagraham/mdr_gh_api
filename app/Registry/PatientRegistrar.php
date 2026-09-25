@@ -6,7 +6,6 @@ namespace App\Registry;
 
 use App\Models\Patient;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -64,10 +63,17 @@ final class PatientRegistrar
                 'given_name' => $data['given_name'],
                 'other_names' => $data['other_names'] ?? null,
                 'sex' => $data['sex'],
-                'date_of_birth' => $this->dateOfBirth($data),
+                'date_of_birth' => $data['date_of_birth'] ?? null,
                 'dob_estimated' => $this->dateOfBirthIsEstimated($data),
+                'estimated_age' => empty($data['date_of_birth'])
+                    ? ($data['estimated_age'] ?? null)
+                    : null,
                 'phone_primary' => $data['phone_primary'] ?? null,
                 'phone_alt' => $data['phone_alt'] ?? null,
+                'contact_name' => $data['contact_name'] ?? null,
+                'contact_relationship' => $data['contact_relationship'] ?? null,
+                'contact_phone' => $data['contact_phone'] ?? null,
+                'residence_district' => $data['residence_district'] ?? null,
                 'status' => 'active',
                 'enrolled_at' => now(),
                 'enrolled_by' => $enrolledBy,
@@ -87,27 +93,6 @@ final class PatientRegistrar
 
             return $patient->load('identifiers');
         });
-    }
-
-    /**
-     * An age is stored as a date of birth of 1 January in the implied year,
-     * flagged estimated — never as a number of years. A stored age is wrong
-     * from the next birthday onwards, and every age-at-onset figure derived
-     * from it inherits the error.
-     *
-     * @param  array<string, mixed>  $data
-     */
-    private function dateOfBirth(array $data): ?string
-    {
-        if (! empty($data['date_of_birth'])) {
-            return $data['date_of_birth'];
-        }
-
-        if (isset($data['age']) && $data['age'] !== null && $data['age'] !== '') {
-            return Carbon::now()->subYears((int) $data['age'])->startOfYear()->toDateString();
-        }
-
-        return null;
     }
 
     /**

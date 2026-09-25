@@ -5,6 +5,7 @@ use App\Models\Patient;
 use App\Models\PatientIdentifier;
 use App\Models\User;
 use App\Registry\RegistryNumber;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -158,8 +159,8 @@ it('creates exactly one patient when the same client_ref is sent twice', functio
         ->and(Patient::count())->toBe(1);
 });
 
-it('accepts a registration with no date of birth when an age is given', function () {
-    $proposed = proposedPatient(['date_of_birth' => null, 'age' => 62]);
+it('accepts a registration with no date of birth when an estimated age is given', function () {
+    $proposed = proposedPatient(['date_of_birth' => null, 'estimated_age' => 62]);
     $check = runDuplicateCheck($proposed);
 
     $this->postJson('/api/patients', [
@@ -172,10 +173,58 @@ it('accepts a registration with no date of birth when an age is given', function
 
     $stored = Patient::sole();
 
-    // Stored as a date, flagged estimated — never as a number that rots.
+    // Recorded as the number the clerk was given, anchored to enrolment. The
+    // date of birth stays empty rather than being filled with a fabricated
+    // 1 January, which would claim a precision nobody has.
     expect($stored->dob_estimated)->toBeTrue()
-        ->and($stored->date_of_birth->year)->toBe(now()->subYears(62)->year)
-        ->and($stored->date_of_birth->format('m-d'))->toBe('01-01');
+        ->and($stored->estimated_age)->toBe(62)
+        ->and($stored->date_of_birth)->toBeNull()
+        ->and($stored->age())->toBe(62);
+});
+
+// Criterion 13.
+it('refuses a registration carrying neither a date of birth nor an estimated age', function () {
+    $proposed = proposedPatient(['date_of_birth' => null]);
+    $check = runDuplicateCheck($proposed);
+
+    $this->postJson('/api/patients', [
+        ...$proposed,
+        'client_ref' => (string) Str::uuid(),
+        'dob_estimated' => true,
+        'duplicate_check_token' => $check['duplicate_check_token'],
+        'duplicate_decision' => 'no_match',
+    ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrorFor('estimated_age');
+
+    expect(Patient::count())->toBe(0);
+});
+
+// Criterion 13, second half: the constraint holds without the validator.
+it('refuses at the database when both age facts are absent', function () {
+    expect(fn () => Patient::factory()->create([
+        'date_of_birth' => null,
+        'estimated_age' => null,
+    ]))->toThrow(QueryException::class, 'patients_age_known');
+});
+
+// Criterion 14.
+it('derives the age of an estimated-age patient from enrolment, not from today', function () {
+    $patient = Patient::factory()->create([
+        'date_of_birth' => null,
+        'dob_estimated' => true,
+        'estimated_age' => 60,
+        'enrolled_at' => now(),
+    ]);
+
+    expect($patient->age())->toBe(60);
+
+    // Two years on, the patient is two years older and the recorded fact has
+    // not moved. A bare stored age would still be reporting 60.
+    $this->travel(2)->years();
+
+    expect($patient->fresh()->age())->toBe(62)
+        ->and($patient->fresh()->estimated_age)->toBe(60);
 });
 
 it('accepts a missing folder number when a coded reason is given', function () {
@@ -218,4 +267,58 @@ it('keeps patient endpoints closed to guests and unverified accounts', function 
     // Laravel's EnsureEmailIsVerified answers a JSON request with 403.
     $this->actingAs(User::factory()->unverified()->create());
     $this->postJson('/api/patients/duplicate-check', proposedPatient())->assertForbidden();
+});
+
+it('stores the tracing fields registration now collects', function () {
+    // Section 3.5. None of these are required, and all of them are what makes
+    // a patient findable in three years' time.
+    $proposed = proposedPatient([
+        'phone_primary' => '0244000111',
+        'phone_alt' => '0201234567',
+        'contact_name' => 'Ama Mensah',
+        'contact_relationship' => 'Daughter',
+        'contact_phone' => '0555123456',
+        'residence_district' => 'Asokwa',
+        'identifiers' => [
+            ['system' => 'folder', 'value' => '227845'],
+            ['system' => 'nhis', 'value' => 'NHIS-99881'],
+        ],
+    ]);
+
+    $check = runDuplicateCheck($proposed);
+
+    $this->postJson('/api/patients', [
+        ...$proposed,
+        'client_ref' => (string) Str::uuid(),
+        'dob_estimated' => false,
+        'duplicate_check_token' => $check['duplicate_check_token'],
+        'duplicate_decision' => 'no_match',
+    ])->assertCreated();
+
+    $stored = Patient::sole();
+
+    expect($stored->phone_alt)->toBe('0201234567')
+        ->and($stored->contact_name)->toBe('Ama Mensah')
+        ->and($stored->contact_relationship)->toBe('Daughter')
+        ->and($stored->contact_phone)->toBe('0555123456')
+        ->and($stored->residence_district)->toBe('Asokwa')
+        ->and($stored->identifiers()->where('system', 'nhis')->value('value'))->toBe('NHIS-99881');
+});
+
+it('warns on a close name when one side gave only an estimated age', function () {
+    // The estimated-age change must not cost duplicate detection its second
+    // signal: before it, an age became a 1 January date of birth and compared
+    // like any other. Now the comparison has to reach both facts.
+    Patient::factory()->named('Mensah', 'Kwame')->estimatedAge(62)->create();
+
+    $check = runDuplicateCheck(proposedPatient([
+        'family_name' => 'Mensa',
+        'given_name' => 'Kwame',
+        'date_of_birth' => null,
+        'estimated_age' => 63,
+        'identifiers' => [],
+    ]));
+
+    expect($check['verdict'])->toBe('warn')
+        ->and($check['candidates'][0]['reasons'])->toContain('age_within_2_years');
 });

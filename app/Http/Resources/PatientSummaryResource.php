@@ -22,7 +22,12 @@ class PatientSummaryResource extends JsonResource
             'name' => $this->displayName(),
             'date_of_birth' => $this->date_of_birth?->toDateString(),
             'dob_estimated' => $this->dob_estimated,
+
+            // The number a clerk actually gave, kept alongside the derived
+            // age so a reader can tell an estimate from a calculation.
+            'estimated_age' => $this->estimated_age,
             'age' => $this->age(),
+            'age_is_estimated' => $this->ageIsEstimated(),
             'sex' => $this->sex,
             'status' => $this->status,
             'date_last_seen' => $this->date_last_seen?->toDateString(),
